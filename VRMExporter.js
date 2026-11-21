@@ -578,34 +578,38 @@ function addSampler(state, target) {
     return index;
 }
 
-function imageBitmapToPNG(imageBitmap, flipY = false) {
-    return new Promise((resolve, reject) => {
-        const canvas = document.createElement("canvas");
-        canvas.width = imageBitmap.width;
-        canvas.height = imageBitmap.height;
-
-        const ctx = canvas.getContext("2d");
-        if (flipY) {
-            ctx.translate(0, canvas.height);
-            ctx.scale(1, -1);
-        }
-        ctx.drawImage(imageBitmap, 0, 0);
-
-        canvas.toBlob(async (blob) => {
-            const png = await blob.arrayBuffer();
-            resolve(png);
-        }, "image/png");
-    });
+async function imageBitmapToEncoded(imageBitmap, flipY = false) {
+    const canvas = document.createElement("canvas");
+    canvas.width = imageBitmap.width;
+    canvas.height = imageBitmap.height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (flipY) {
+        ctx.translate(0, canvas.height);
+        ctx.scale(1, -1);
+    }
+    ctx.drawImage(imageBitmap, 0, 0);
+    // Keep alpha textures as PNG; use JPEG for fully opaque textures to avoid
+    // the large PNG size expansion common when re-encoding VRM textures.
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    let hasAlpha = false;
+    for (let i = 3; i < pixels.length; i += 4) {
+        if (pixels[i] !== 255) { hasAlpha = true; break; }
+    }
+    const mimeType = hasAlpha ? "image/png" : "image/jpeg";
+    const blob = await new Promise((resolve, reject) =>
+        canvas.toBlob(value => value ? resolve(value) : reject(new Error("Texture encoding failed")), mimeType, 0.88)
+    );
+    return { buffer: await blob.arrayBuffer(), mimeType };
 }
 
 async function addImage(state, target, name = '', flipY) {
     const imageIndex = state.imageMap.findIndex((v) => v == target);
     if (imageIndex >= 0) return imageIndex;
 
-    const png = await imageBitmapToPNG(target, flipY);
+    const encoded = await imageBitmapToEncoded(target, flipY);
     const image = {
-        bufferView: addBufferView(state, new Uint8Array(png), 'Image: ' + name),
-        mimeType: "image/png",
+        bufferView: addBufferView(state, new Uint8Array(encoded.buffer), 'Image: ' + name),
+        mimeType: encoded.mimeType,
         name: name,
     };
     const index = state.images.length;
