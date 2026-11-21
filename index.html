@@ -32,7 +32,7 @@ button.primary{background:#536fe0;border-color:#536fe0;color:white}button:disabl
 <main>
 <section class="viewer">
 <canvas id="view"></canvas>
-<div class="toolbar"><button id="frameBtn">Frame model</button><button id="resetBtn">Reset view</button><button id="exportBtn" class="primary">Export combined GLB</button><button id="vrm0Btn">Download VRM 0.x</button><button id="vrm1Btn">Download VRM 1.0</button></div>
+<div class="toolbar"><button id="frameBtn">Frame model</button><button id="resetBtn">Reset view</button><button id="exportBtn" class="primary">Download combined GLB</button><button id="hairExportBtn">Download Hair GLB</button><button id="outfitExportBtn">Download Outfit GLB</button><button id="vrm0Btn">Download VRM 0.x</button><button id="vrm1Btn">Download VRM 1.0</button></div>
 </section>
 <aside class="panel">
 <section class="card">
@@ -167,19 +167,29 @@ document.querySelector('#undoMeshBtn').addEventListener('click',()=>{
  parent.add(mesh);parent.children.splice(parent.children.indexOf(mesh),1);parent.children.splice(Math.max(0,index),0,mesh);
  lastDeletedMesh=null;refreshMeshList();setStatus('Last deleted mesh restored.');
 });
+function triggerDownload(blob, filename){
+ const url=URL.createObjectURL(blob);
+ const a=document.createElement('a');
+ a.href=url;a.download=filename;a.style.display='none';
+ document.body.appendChild(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
 async function downloadVrm(version){
- if(!baseVrm){setStatus('VRM export requires a VRM file as the Base Character. A GLB base cannot be exported as VRM.');return;}
+ if(!baseVrm){setStatus('VRM export needs a VRM file loaded as Base Character.');return;}
  const added=[];
  try{
+  setStatus('Preparing VRM '+(version===0?'0.x':'1.0')+'…');
   scene.updateMatrixWorld(true);baseVrm.scene.updateMatrixWorld(true);
   for(const kind of ['hair','outfit']){
-   const o=slots[kind];if(o&&o.visible){const copy=o.clone(true);copy.updateMatrixWorld(true);baseVrm.scene.attach(copy);added.push(copy);}
+   const o=slots[kind];if(o&&o.visible){
+    const copy=o.clone(true);scene.updateMatrixWorld(true);
+    baseVrm.scene.attach(copy);added.push(copy);
+   }
   }
-  setStatus('Building VRM '+(version===0?'0.x':'1.0')+'…');
   const buffer=await VRMExport(baseVrm,version);
-  const blob=new Blob([buffer],{type:'application/octet-stream'});const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download='aster-fitted.vrm';a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);
-  setStatus('VRM export finished. Validate the file in your target VRM app.');
+  if(!(buffer instanceof ArrayBuffer)||buffer.byteLength<20)throw new Error('Exporter returned an empty or invalid file.');
+  triggerDownload(new Blob([buffer],{type:'model/gltf-binary'}),version===0?'aster-fitted-vrm0.vrm':'aster-fitted-vrm1.vrm');
+  setStatus('VRM file generated. Check your Android Downloads folder.');
  }catch(e){console.error(e);setStatus('VRM export failed: '+(e.message||'unsupported model structure'));}
  finally{added.forEach(o=>o.parent?.remove(o));}
 }
@@ -187,15 +197,22 @@ document.querySelector('#vrm0Btn').addEventListener('click',()=>downloadVrm(0));
 document.querySelector('#vrm1Btn').addEventListener('click',()=>downloadVrm(1));
 document.querySelector('#frameBtn').addEventListener('click',fitCamera);
 document.querySelector('#resetBtn').addEventListener('click',()=>{camera.position.set(0,1.35,4.5);controls.target.set(0,1,0);controls.update();});
-document.querySelector('#exportBtn').addEventListener('click',async()=>{
+async function exportSlotsToGlb(kinds,filename){
  const exportScene=new THREE.Scene();let count=0;
- Object.values(slots).forEach(o=>{if(o&&o.visible){exportScene.add(o.clone(true));count++;}});
- if(!count){setStatus('Load at least one model before exporting.');return;}
- setStatus('Preparing GLB export…');
- try{const exporter=new GLTFExporter();const data=await exporter.parseAsync(exportScene,{binary:true,onlyVisible:true, trs:false});
- const blob=new Blob([data],{type:'model/gltf-binary'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='aster-fitted-scene.glb';a.click();URL.revokeObjectURL(url);setStatus('GLB exported. This is not a VRM file.');}
- catch(e){console.error(e);setStatus('Export failed: '+(e.message||'unknown error'));}
-});
+ for(const kind of kinds){const o=slots[kind];if(o&&o.visible){exportScene.add(o.clone(true));count++;}}
+ if(!count){setStatus('Load a visible model for this export first.');return;}
+ setStatus('Creating '+filename+'…');
+ try{
+  const exporter=new GLTFExporter();
+  const data=await exporter.parseAsync(exportScene,{binary:true,onlyVisible:true,trs:false});
+  if(!(data instanceof ArrayBuffer)||data.byteLength<20)throw new Error('GLB exporter returned no file.');
+  triggerDownload(new Blob([data],{type:'model/gltf-binary'}),filename);
+  setStatus(filename+' generated. Check your Android Downloads folder.');
+ }catch(e){console.error(e);setStatus('GLB download failed: '+(e.message||'unknown error'));}
+}
+document.querySelector('#exportBtn').addEventListener('click',()=>exportSlotsToGlb(['base','hair','outfit'],'aster-fitted-scene.glb'));
+document.querySelector('#hairExportBtn').addEventListener('click',()=>exportSlotsToGlb(['hair'],'aster-hair.glb'));
+document.querySelector('#outfitExportBtn').addEventListener('click',()=>exportSlotsToGlb(['outfit'],'aster-outfit.glb'));
 function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera);}animate();
 </script>
 </body></html>
