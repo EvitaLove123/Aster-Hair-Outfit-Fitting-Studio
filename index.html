@@ -32,7 +32,7 @@ button.primary{background:#536fe0;border-color:#536fe0;color:white}button:disabl
 <main>
 <section class="viewer">
 <canvas id="view"></canvas>
-<div class="toolbar"><button id="frameBtn">Frame model</button><button id="resetBtn">Reset view</button><button id="exportBtn" class="primary">Export combined GLB</button></div>
+<div class="toolbar"><button id="frameBtn">Frame model</button><button id="resetBtn">Reset view</button><button id="exportBtn" class="primary">Export combined GLB</button><button id="vrm0Btn">Download VRM 0.x</button><button id="vrm1Btn">Download VRM 1.0</button></div>
 </section>
 <aside class="panel">
 <section class="card">
@@ -58,15 +58,29 @@ button.primary{background:#536fe0;border-color:#536fe0;color:white}button:disabl
 <div><label>Scale</label><input id="scale" type="number" step=".01" min=".01" value="1"></div>
 <div><label> </label><button id="zeroBtn" style="width:100%">Reset part</button></div>
 </div>
-<p class="note">Values are scene transforms only. This version does not transfer skin weights or attach an accessory to the base skeleton.</p>
+<div class="grid3" style="margin-top:10px"><button id="moveMode" class="primary">Move gizmo</button><button id="rotateMode">Rotate gizmo</button><button id="scaleMode">Scale gizmo</button></div>
+<p class="note">Use the 3D gizmo to move, rotate, or scale the selected slot. Dragging the gizmo temporarily disables camera orbit.</p>
 </section>
 <section class="card">
-<h2>3. Current limits</h2>
+<h2>3. Delete character meshes</h2>
+<label for="meshSelect">Mesh in Base Character</label>
+<select id="meshSelect" style="width:100%;padding:9px;border:1px solid #dbe1eb;border-radius:8px;background:white;color:#263149"><option value="">Load a base model first</option></select>
+<div class="grid3" style="margin-top:9px"><button id="refreshMeshes">Refresh list</button><button id="deleteMeshBtn" class="primary">Delete mesh</button><button id="undoMeshBtn" disabled>Undo delete</button></div>
+<p class="note">Removes the selected mesh from the base model, for example old hair or body parts hidden by an outfit. Undo restores the last deleted mesh.</p>
+</section>
+<section class="card">
+<h2>4. VRoid custom item</h2>
+<button id="customItemBtn" disabled style="width:100%">Export .vroidcustomitem — unavailable</button>
+<p class="note">A valid .vroidcustomitem requires VRoid Studio's own item data (parameters, texture layers, category and version). A generic VRM/GLB mesh cannot be packaged into a valid custom item here. Use VRoid Studio to create/export this format.</p>
+</section>
+<section class="card">
+<h2>5. Current limits</h2>
 <ul class="note" style="padding-left:18px;margin:0">
 <li>Preview and manual positioning for VRM / GLB.</li>
 <li>Export combines visible scene objects into GLB.</li>
-<li>No native .vroidcustomitem parser yet.</li>
-<li>No automatic rig retargeting, skin-weight transfer, or valid VRM 0.x / 1.0 export.</li>
+<li>VRM export is available when the Base Character is a VRM; GLB-only base models cannot be converted into VRM by this exporter.</li>
+<li>Accessory meshes are included as scene objects, but are not automatically skinned or retargeted to the base skeleton.</li>
+<li>.vroidcustomitem export is not supported because it requires VRoid Studio item data.</li>
 <li>No UniVRM dependency and no fabricated UniVRM metadata.</li>
 </ul>
 </section>
@@ -77,7 +91,9 @@ import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {GLTFExporter} from 'three/addons/exporters/GLTFExporter.js';
+import {TransformControls} from 'three/addons/controls/TransformControls.js';
 import {VRMLoaderPlugin} from '@pixiv/three-vrm';
+import {VRMExport} from './VRMExporter.js';
 
 const canvas=document.querySelector('#view'), status=document.querySelector('#status');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false});
@@ -86,11 +102,14 @@ renderer.outputColorSpace=THREE.SRGBColorSpace;
 const scene=new THREE.Scene(); scene.background=new THREE.Color(0xf1f5fb);
 const camera=new THREE.PerspectiveCamera(35,canvas.clientWidth/canvas.clientHeight,.01,1000); camera.position.set(0,1.35,4.5);
 const controls=new OrbitControls(camera,renderer.domElement); controls.target.set(0,1,0); controls.enableDamping=true;
+const gizmo=new TransformControls(camera,renderer.domElement); scene.add(gizmo.getHelper());
+gizmo.addEventListener('dragging-changed',e=>{controls.enabled=!e.value;});
+gizmo.addEventListener('objectChange',()=>syncInputs());
 scene.add(new THREE.HemisphereLight(0xffffff,0xb6c3d7,2));
 const key=new THREE.DirectionalLight(0xffffff,2.2);key.position.set(3,5,4);scene.add(key);
 const fill=new THREE.DirectionalLight(0xffffff,1);fill.position.set(-4,2,-3);scene.add(fill);
 const grid=new THREE.GridHelper(10,20,0xcbd4e2,0xe1e7f0);grid.position.y=0;scene.add(grid);
-const slots={base:null,hair:null,outfit:null}; const loader=new GLTFLoader(); loader.register(parser=>new VRMLoaderPlugin(parser));
+const slots={base:null,hair:null,outfit:null}; let baseVrm=null; let lastDeletedMesh=null; const loader=new GLTFLoader(); loader.register(parser=>new VRMLoaderPlugin(parser));
 function setStatus(s){status.textContent=s}
 function disposeObject(o){o.traverse(n=>{if(n.geometry)n.geometry.dispose();if(n.material){for(const m of (Array.isArray(n.material)?n.material:[n.material])){for(const v of Object.values(m))if(v&&v.isTexture)v.dispose();m.dispose();}}});}
 function fitCamera(){const box=new THREE.Box3();Object.values(slots).forEach(o=>{if(o&&o.visible)box.expandByObject(o)});if(box.isEmpty())return;const size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());controls.target.copy(center);const max=Math.max(size.x,size.y,size.z,.5);camera.position.set(center.x+max*.15,center.y+max*.18,center.z+max*2.6);camera.near=Math.max(.001,max/1000);camera.far=max*100;camera.updateProjectionMatrix();controls.update();}
@@ -101,13 +120,15 @@ async function loadPart(kind,file){
  try{
   const buffer=await file.arrayBuffer();
   const gltf=await new Promise((resolve,reject)=>loader.parse(buffer,'',resolve,reject));
-  const obj=(gltf.userData&&gltf.userData.vrm&&gltf.userData.vrm.scene)||gltf.scene;
+  const loadedVrm=(gltf.userData&&gltf.userData.vrm)||null;
+  const obj=(loadedVrm&&loadedVrm.scene)||gltf.scene;
   if(!obj)throw new Error('No scene found in file');
+  if(kind==='base')baseVrm=loadedVrm;
   if(slots[kind]){scene.remove(slots[kind]);disposeObject(slots[kind]);}
   slots[kind]=obj;obj.name='Aster_'+kind;scene.add(obj);
   obj.visible=document.querySelector('#'+kind+'Visible').checked;
   if(kind==='base'){obj.position.set(0,0,0);fitCamera();}
-  syncInputs();setStatus('Loaded '+file.name+' successfully.');
+  syncInputs();refreshMeshList();attachGizmo();setStatus('Loaded '+file.name+' successfully.');
  }catch(e){console.error(e);setStatus('Could not load file: '+(e.message||'unsupported or damaged model'));}
 }
 ['base','hair','outfit'].forEach(k=>{
@@ -117,9 +138,53 @@ async function loadPart(kind,file){
 const target=document.querySelector('#target'), fields={px:'x',py:'y',pz:'z',ry:'ry',scale:'scale'};
 function current(){return slots[target.value]}
 function syncInputs(){const o=current();if(!o)return;px.value=o.position.x.toFixed(3);py.value=o.position.y.toFixed(3);pz.value=o.position.z.toFixed(3);ry.value=THREE.MathUtils.radToDeg(o.rotation.y).toFixed(1);scale.value=o.scale.x.toFixed(3);}
-target.addEventListener('change',syncInputs);
+function attachGizmo(){const o=current();if(o)gizmo.attach(o);else gizmo.detach();}
+target.addEventListener('change',()=>{syncInputs();attachGizmo();});
+document.querySelector('#moveMode').addEventListener('click',()=>gizmo.setMode('translate'));
+document.querySelector('#rotateMode').addEventListener('click',()=>gizmo.setMode('rotate'));
+document.querySelector('#scaleMode').addEventListener('click',()=>gizmo.setMode('scale'));
 ['px','py','pz','ry','scale'].forEach(id=>document.querySelector('#'+id).addEventListener('input',e=>{const o=current();if(!o)return;const v=Number(e.target.value)||0;if(id==='px')o.position.x=v;if(id==='py')o.position.y=v;if(id==='pz')o.position.z=v;if(id==='ry')o.rotation.y=THREE.MathUtils.degToRad(v);if(id==='scale')o.scale.setScalar(Math.max(.001,v));}));
 document.querySelector('#zeroBtn').addEventListener('click',()=>{const o=current();if(!o)return;o.position.set(0,0,0);o.rotation.set(0,0,0);o.scale.setScalar(1);syncInputs();});
+const meshSelect=document.querySelector('#meshSelect');
+function refreshMeshList(){
+ const old=meshSelect.value;meshSelect.innerHTML='';const meshes=[];
+ if(slots.base)slots.base.traverse(n=>{if(n.isMesh)meshes.push(n);});
+ meshes.forEach((m,i)=>{const opt=document.createElement('option');opt.value=String(i);opt.textContent=(m.name||'Mesh '+(i+1))+' · '+(m.parent?.name||'root');meshSelect.appendChild(opt);});
+ if(!meshes.length){const opt=document.createElement('option');opt.value='';opt.textContent='No meshes found';meshSelect.appendChild(opt);}
+ if([...meshSelect.options].some(o=>o.value===old))meshSelect.value=old;
+ meshSelect._meshList=meshes;
+ document.querySelector('#undoMeshBtn').disabled=!lastDeletedMesh;
+}
+document.querySelector('#refreshMeshes').addEventListener('click',refreshMeshList);
+document.querySelector('#deleteMeshBtn').addEventListener('click',()=>{
+ const mesh=(meshSelect._meshList||[])[Number(meshSelect.value)];
+ if(!mesh||!mesh.parent){setStatus('Select a mesh from the Base Character first.');return;}
+ lastDeletedMesh={mesh,parent:mesh.parent,index:mesh.parent.children.indexOf(mesh)};
+ mesh.parent.remove(mesh);refreshMeshList();setStatus('Deleted mesh: '+(mesh.name||'unnamed mesh')+'. Use Undo delete to restore it.');
+});
+document.querySelector('#undoMeshBtn').addEventListener('click',()=>{
+ if(!lastDeletedMesh)return;const {mesh,parent,index}=lastDeletedMesh;
+ parent.add(mesh);parent.children.splice(parent.children.indexOf(mesh),1);parent.children.splice(Math.max(0,index),0,mesh);
+ lastDeletedMesh=null;refreshMeshList();setStatus('Last deleted mesh restored.');
+});
+async function downloadVrm(version){
+ if(!baseVrm){setStatus('VRM export requires a VRM file as the Base Character. A GLB base cannot be exported as VRM.');return;}
+ const added=[];
+ try{
+  scene.updateMatrixWorld(true);baseVrm.scene.updateMatrixWorld(true);
+  for(const kind of ['hair','outfit']){
+   const o=slots[kind];if(o&&o.visible){const copy=o.clone(true);copy.updateMatrixWorld(true);baseVrm.scene.attach(copy);added.push(copy);}
+  }
+  setStatus('Building VRM '+(version===0?'0.x':'1.0')+'…');
+  const buffer=await VRMExport(baseVrm,version);
+  const blob=new Blob([buffer],{type:'application/octet-stream'});const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='aster-fitted.vrm';a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);
+  setStatus('VRM export finished. Validate the file in your target VRM app.');
+ }catch(e){console.error(e);setStatus('VRM export failed: '+(e.message||'unsupported model structure'));}
+ finally{added.forEach(o=>o.parent?.remove(o));}
+}
+document.querySelector('#vrm0Btn').addEventListener('click',()=>downloadVrm(0));
+document.querySelector('#vrm1Btn').addEventListener('click',()=>downloadVrm(1));
 document.querySelector('#frameBtn').addEventListener('click',fitCamera);
 document.querySelector('#resetBtn').addEventListener('click',()=>{camera.position.set(0,1.35,4.5);controls.target.set(0,1,0);controls.update();});
 document.querySelector('#exportBtn').addEventListener('click',async()=>{
