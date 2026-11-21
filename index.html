@@ -180,10 +180,14 @@ async function downloadVrm(version){
  try{
   setStatus('Preparing VRM '+(version===0?'0.x':'1.0')+'…');
   scene.updateMatrixWorld(true);baseVrm.scene.updateMatrixWorld(true);
+  const exportRoot=baseVrm.scene.children.find(node=>node.type!=='VRMExpression'&&node.name!=='VRMHumanoidRig');
+  if(!exportRoot)throw new Error('Could not find the VRM scene root for accessory export.');
   for(const kind of ['hair','outfit']){
    const o=slots[kind];if(o&&o.visible){
-    const copy=o.clone(true);scene.updateMatrixWorld(true);
-    baseVrm.scene.attach(copy);added.push(copy);
+    const copy=o.clone(true);
+    scene.updateMatrixWorld(true);copy.updateMatrixWorld(true);
+    exportRoot.attach(copy);
+    added.push(copy);
    }
   }
   const buffer=await VRMExport(baseVrm,version);
