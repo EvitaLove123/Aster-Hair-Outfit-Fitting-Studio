@@ -137,7 +137,7 @@ async function loadPart(kind,file){
 });
 const target=document.querySelector('#target'), fields={px:'x',py:'y',pz:'z',ry:'ry',scale:'scale'};
 function current(){return slots[target.value]}
-function syncInputs(){const o=current();if(!o)return;px.value=o.position.x.toFixed(3);py.value=o.position.y.toFixed(3);pz.value=o.position.z.toFixed(3);ry.value=THREE.MathUtils.radToDeg(o.rotation.y).toFixed(1);scale.value=o.scale.x.toFixed(3);}
+function syncInputs(){const o=current();if(!o)return;document.querySelector('#px').value=o.position.x.toFixed(3);document.querySelector('#py').value=o.position.y.toFixed(3);document.querySelector('#pz').value=o.position.z.toFixed(3);document.querySelector('#ry').value=THREE.MathUtils.radToDeg(o.rotation.y).toFixed(1);document.querySelector('#scale').value=o.scale.x.toFixed(3);}
 function attachGizmo(){const o=current();if(o)gizmo.attach(o);else gizmo.detach();}
 target.addEventListener('change',()=>{syncInputs();attachGizmo();});
 document.querySelector('#moveMode').addEventListener('click',()=>gizmo.setMode('translate'));
