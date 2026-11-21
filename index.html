@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f7f9fc"><title>Aster Hair & Outfit Fitting Studio</title>
+<style>
+:root{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:#20283a;background:#f5f7fb;font-synthesis:none}
+*{box-sizing:border-box}body{margin:0}header{padding:18px 16px 14px;background:#fff;border-bottom:1px solid #e6eaf1;position:sticky;top:0;z-index:4}
+h1{font-size:20px;margin:0 0 5px}header p{font-size:12px;color:#68738a;margin:0}
+main{max-width:1100px;margin:auto;padding:14px;display:grid;gap:14px;grid-template-columns:minmax(0,1fr) minmax(280px,360px)}
+.viewer{background:#fff;border:1px solid #e3e8f0;border-radius:16px;overflow:hidden;min-height:420px;display:flex;flex-direction:column}
+#view{width:100%;height: min(66vh,650px);min-height:360px;display:block;background:linear-gradient(#fafdff,#edf3fa)}
+.toolbar{padding:10px;display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid #edf0f5}
+.panel{display:grid;gap:12px;align-content:start}.card{background:#fff;border:1px solid #e3e8f0;border-radius:14px;padding:14px}
+h2{font-size:14px;margin:0 0 11px}.slot{border-top:1px solid #edf0f5;padding-top:11px;margin-top:11px}
+.slot:first-of-type{border:0;padding:0;margin:0}.slothead{display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:650;margin-bottom:8px}
+label{font-size:12px;color:#68738a;display:block;margin:9px 0 5px}
+input[type=file]{width:100%;font-size:12px;color:#59657a}input[type=number]{width:100%;padding:8px;border:1px solid #dbe1eb;border-radius:8px;background:#fff;color:#20283a}
+input[type=checkbox]{accent-color:#647de8}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+button{border:1px solid #dce2ec;background:#fff;color:#29344a;padding:9px 11px;border-radius:9px;font-weight:600;font-size:12px;cursor:pointer}
+button.primary{background:#536fe0;border-color:#536fe0;color:white}button:disabled{opacity:.45}
+.note{font-size:11px;line-height:1.55;color:#69758a}.status{font-size:12px;color:#52617a;min-height:18px}.pill{display:inline-block;background:#f0f3ff;color:#5268c6;padding:3px 7px;border-radius:20px;font-size:10px}
+@media(max-width:760px){main{grid-template-columns:1fr;padding:10px}.viewer{min-height:360px}#view{height:54vh;min-height:340px}header{position:static}}
+</style>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/","@pixiv/three-vrm":"https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.4.2/lib/three-vrm.module.js"}}
+</script>
+</head>
+<body>
+<header><h1>Aster Hair & Outfit Fitting Studio</h1><p>Browser-based model fitting · Android friendly · Files stay on your device</p></header>
+<main>
+<section class="viewer">
+<canvas id="view"></canvas>
+<div class="toolbar"><button id="frameBtn">Frame model</button><button id="resetBtn">Reset view</button><button id="exportBtn" class="primary">Export combined GLB</button></div>
+</section>
+<aside class="panel">
+<section class="card">
+<h2>1. Load models <span class="pill">VRM / GLB</span></h2>
+<div class="slot"><div class="slothead"><span>Base character</span><label style="margin:0"><input id="baseVisible" type="checkbox" checked> Visible</label></div><input id="baseFile" type="file" accept=".vrm,.glb,.gltf"></div>
+<div class="slot"><div class="slothead"><span>Hair accessory</span><label style="margin:0"><input id="hairVisible" type="checkbox" checked> Visible</label></div><input id="hairFile" type="file" accept=".vrm,.glb,.gltf"></div>
+<div class="slot"><div class="slothead"><span>Outfit accessory</span><label style="margin:0"><input id="outfitVisible" type="checkbox" checked> Visible</label></div><input id="outfitFile" type="file" accept=".vrm,.glb,.gltf"></div>
+<p class="note">Load the base first, then add hair and outfit files. Each accessory is placed as a separate model so you can align it manually.</p>
+<div id="status" class="status" role="status">Ready. Choose a Base VRM or GLB file.</div>
+</section>
+<section class="card">
+<h2>2. Select part to adjust</h2>
+<select id="target" style="width:100%;padding:9px;border:1px solid #dbe1eb;border-radius:8px;background:white;color:#263149">
+<option value="base">Base character</option><option value="hair">Hair accessory</option><option value="outfit">Outfit accessory</option>
+</select>
+<div class="grid3">
+<div><label>Position X</label><input id="px" type="number" step=".01" value="0"></div>
+<div><label>Position Y</label><input id="py" type="number" step=".01" value="0"></div>
+<div><label>Position Z</label><input id="pz" type="number" step=".01" value="0"></div>
+</div>
+<div class="grid3">
+<div><label>Rotation Y°</label><input id="ry" type="number" step="1" value="0"></div>
+<div><label>Scale</label><input id="scale" type="number" step=".01" min=".01" value="1"></div>
+<div><label> </label><button id="zeroBtn" style="width:100%">Reset part</button></div>
+</div>
+<p class="note">Values are scene transforms only. This version does not transfer skin weights or attach an accessory to the base skeleton.</p>
+</section>
+<section class="card">
+<h2>3. Current limits</h2>
+<ul class="note" style="padding-left:18px;margin:0">
+<li>Preview and manual positioning for VRM / GLB.</li>
+<li>Export combines visible scene objects into GLB.</li>
+<li>No native .vroidcustomitem parser yet.</li>
+<li>No automatic rig retargeting, skin-weight transfer, or valid VRM 0.x / 1.0 export.</li>
+<li>No UniVRM dependency and no fabricated UniVRM metadata.</li>
+</ul>
+</section>
+</aside>
+</main>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {GLTFExporter} from 'three/addons/exporters/GLTFExporter.js';
+import {VRMLoaderPlugin} from '@pixiv/three-vrm';
+
+const canvas=document.querySelector('#view'), status=document.querySelector('#status');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(canvas.clientWidth,canvas.clientHeight,false);
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0xf1f5fb);
+const camera=new THREE.PerspectiveCamera(35,canvas.clientWidth/canvas.clientHeight,.01,1000); camera.position.set(0,1.35,4.5);
+const controls=new OrbitControls(camera,renderer.domElement); controls.target.set(0,1,0); controls.enableDamping=true;
+scene.add(new THREE.HemisphereLight(0xffffff,0xb6c3d7,2));
+const key=new THREE.DirectionalLight(0xffffff,2.2);key.position.set(3,5,4);scene.add(key);
+const fill=new THREE.DirectionalLight(0xffffff,1);fill.position.set(-4,2,-3);scene.add(fill);
+const grid=new THREE.GridHelper(10,20,0xcbd4e2,0xe1e7f0);grid.position.y=0;scene.add(grid);
+const slots={base:null,hair:null,outfit:null}; const loader=new GLTFLoader(); loader.register(parser=>new VRMLoaderPlugin(parser));
+function setStatus(s){status.textContent=s}
+function disposeObject(o){o.traverse(n=>{if(n.geometry)n.geometry.dispose();if(n.material){for(const m of (Array.isArray(n.material)?n.material:[n.material])){for(const v of Object.values(m))if(v&&v.isTexture)v.dispose();m.dispose();}}});}
+function fitCamera(){const box=new THREE.Box3();Object.values(slots).forEach(o=>{if(o&&o.visible)box.expandByObject(o)});if(box.isEmpty())return;const size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());controls.target.copy(center);const max=Math.max(size.x,size.y,size.z,.5);camera.position.set(center.x+max*.15,center.y+max*.18,center.z+max*2.6);camera.near=Math.max(.001,max/1000);camera.far=max*100;camera.updateProjectionMatrix();controls.update();}
+function resize(){const w=canvas.clientWidth,h=canvas.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
+new ResizeObserver(resize).observe(canvas);
+async function loadPart(kind,file){
+ if(!file)return;setStatus('Loading '+file.name+'…');
+ try{
+  const buffer=await file.arrayBuffer();
+  const gltf=await new Promise((resolve,reject)=>loader.parse(buffer,'',resolve,reject));
+  const obj=(gltf.userData&&gltf.userData.vrm&&gltf.userData.vrm.scene)||gltf.scene;
+  if(!obj)throw new Error('No scene found in file');
+  if(slots[kind]){scene.remove(slots[kind]);disposeObject(slots[kind]);}
+  slots[kind]=obj;obj.name='Aster_'+kind;scene.add(obj);
+  obj.visible=document.querySelector('#'+kind+'Visible').checked;
+  if(kind==='base'){obj.position.set(0,0,0);fitCamera();}
+  syncInputs();setStatus('Loaded '+file.name+' successfully.');
+ }catch(e){console.error(e);setStatus('Could not load file: '+(e.message||'unsupported or damaged model'));}
+}
+['base','hair','outfit'].forEach(k=>{
+ document.querySelector('#'+k+'File').addEventListener('change',e=>loadPart(k,e.target.files[0]));
+ document.querySelector('#'+k+'Visible').addEventListener('change',e=>{if(slots[k])slots[k].visible=e.target.checked;});
+});
+const target=document.querySelector('#target'), fields={px:'x',py:'y',pz:'z',ry:'ry',scale:'scale'};
+function current(){return slots[target.value]}
+function syncInputs(){const o=current();if(!o)return;px.value=o.position.x.toFixed(3);py.value=o.position.y.toFixed(3);pz.value=o.position.z.toFixed(3);ry.value=THREE.MathUtils.radToDeg(o.rotation.y).toFixed(1);scale.value=o.scale.x.toFixed(3);}
+target.addEventListener('change',syncInputs);
+['px','py','pz','ry','scale'].forEach(id=>document.querySelector('#'+id).addEventListener('input',e=>{const o=current();if(!o)return;const v=Number(e.target.value)||0;if(id==='px')o.position.x=v;if(id==='py')o.position.y=v;if(id==='pz')o.position.z=v;if(id==='ry')o.rotation.y=THREE.MathUtils.degToRad(v);if(id==='scale')o.scale.setScalar(Math.max(.001,v));}));
+document.querySelector('#zeroBtn').addEventListener('click',()=>{const o=current();if(!o)return;o.position.set(0,0,0);o.rotation.set(0,0,0);o.scale.setScalar(1);syncInputs();});
+document.querySelector('#frameBtn').addEventListener('click',fitCamera);
+document.querySelector('#resetBtn').addEventListener('click',()=>{camera.position.set(0,1.35,4.5);controls.target.set(0,1,0);controls.update();});
+document.querySelector('#exportBtn').addEventListener('click',async()=>{
+ const exportScene=new THREE.Scene();let count=0;
+ Object.values(slots).forEach(o=>{if(o&&o.visible){exportScene.add(o.clone(true));count++;}});
+ if(!count){setStatus('Load at least one model before exporting.');return;}
+ setStatus('Preparing GLB export…');
+ try{const exporter=new GLTFExporter();const data=await exporter.parseAsync(exportScene,{binary:true,onlyVisible:true, trs:false});
+ const blob=new Blob([data],{type:'model/gltf-binary'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='aster-fitted-scene.glb';a.click();URL.revokeObjectURL(url);setStatus('GLB exported. This is not a VRM file.');}
+ catch(e){console.error(e);setStatus('Export failed: '+(e.message||'unknown error'));}
+});
+function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera);}animate();
+</script>
+</body></html>
